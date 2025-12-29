@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>규림이의 성장 게이지</title>
+    <!-- 외부 라이브러리 로드 -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        @keyframes stamp-bounce {
+            0% { transform: scale(3); opacity: 0; }
+            70% { transform: scale(0.9); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .stamp-animation { animation: stamp-bounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes roulette-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .spin-anim { animation: roulette-spin 0.2s linear infinite; }
+        @media print {
+            .no-print { display: none !important; }
+            .card { border: 2px solid #eee !important; break-inside: avoid; border-radius: 15px !important; margin-bottom: 20px !important; padding: 20px !important; }
+        }
+    </style>
+</head>
+<body class="bg-[#fcfcfc]">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // Firebase 설정 (규림이 전용)
+        const firebaseConfig = {
+            apiKey: "AIzaSyA753QJ2v7uadcYSDEanE11T2kw_1h6fIo",
+            authDomain: "gyurim-growth-2026.firebaseapp.com",
+            projectId: "gyurim-growth-2026",
+            storageBucket: "gyurim-growth-2026.firebasestorage.app",
+            messagingSenderId: "700321267952",
+            appId: "1:700321267952:web:dede538a9bd98141cf8235",
+            measurementId: "G-GVYHQLBFLS"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        const appId = "gyurim-growth-master-v10";
+
+        // 기본 학습 구조
+        const DEFAULT_STRUCTURE = [
+            { id: "cat_math", label: "수학", color: "#3b82f6", icon: "calculator", items: [
+                { id: "m1", name: "개념원리 3-1 (매일 90분)", total: 63 },
+                { id: "m2", name: "쎈 수학 1-2 (매일 60분)", total: 42 },
+                { id: "m3", name: "쎈 중학 연산 (매일 10분)", total: 7 },
+                { id: "m4", name: "이번 주 복습+보충 (토,일 100분)", total: 20 }
+            ]},
+            { id: "cat_english", label: "영어", color: "#22c55e", icon: "languages", items: [
+                { id: "e1", name: "잠수네 영어책읽기 (매일 40분)", total: 28 },
+                { id: "e2", name: "잠수네 집중듣기 (매일 40분)", total: 28 },
+                { id: "e3", name: "잠수네 흘려듣기 (매일 20분)", total: 14 },
+                { id: "e4", name: "그래머홀릭 (월-금 30분)", total: 15 },
+                { id: "e5", name: "천일문 (월,수,금,일 30분)", total: 12 },
+                { id: "e6", name: "워드마스터 (화,목,금 30분)", total: 9 },
+                { id: "e7", name: "화상영어 (월,화 30분)", total: 6 }
+            ]},
+            { id: "cat_korean", label: "국어", color: "#a855f7", icon: "book-open", items: [
+                { id: "k1", name: "빠작 첫문법 (매일 30분)", total: 21 },
+                { id: "k2", name: "한글책 읽기 (평일 30분, 주말 90분)", total: 33 },
+                { id: "k3", name: "빠작 비문학 (월,수 30분)", total: 6 },
+                { id: "k4", name: "빠작 한자 어휘 (화,목 30분)", total: 6 }
+            ]},
+            { id: "cat_general", label: "사회/과학", color: "#f97316", icon: "flask-conical", items: [
+                { id: "s1", name: "중등 과학 (월,수 30분)", total: 6 },
+                { id: "s2", name: "중등 사회 독서 (화,목 30분)", total: 6 }
+            ]}
+        ];
+
+        const formatDate = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}.${m}.${d}`;
+        };
+
+        const generateWeeks = () => {
+            const weeks = [];
+            let runner = new Date('2025-12-29');
+            for (let i = 1; i <= 12; i++) {
+                const mon = new Date(runner);
+                const sun = new Date(runner); sun.setDate(runner.getDate() + 6);
+                weeks.push({ id: `W${i}`, label: `${formatDate(mon)} ~ ${formatDate(sun)}` });
+                runner.setDate(runner.getDate() + 7);
+            }
+            return weeks;
+        };
+
+        function App() {
+            const [user, setUser] = useState(null);
+            const [allWeeksData, setAllWeeksData] = useState({});
+            const [activeWeek, setActiveWeek] = useState("W1");
+            const [isPrintMode, setIsPrintMode] = useState(false);
+            const [showSettings, setShowSettings] = useState(false);
+            const [editStructure, setEditStructure] = useState([]);
+            const [isSpinning, setIsSpinning] = useState(false);
+            const [winningReward, setWinningReward] = useState(null);
+
+            const radarRef = useRef(null);
+            const doughnutRef = useRef(null);
+            const weeksList = useMemo(() => generateWeeks(), []);
+
+            useEffect(() => {
+                auth.signInAnonymously().catch(console.error);
+                return auth.onAuthStateChanged(setUser);
+            }, []);
+
+            useEffect(() => {
+                if (!user) return;
+                return db.collection('artifacts').doc(appId).collection('public').doc('data').collection('weeklyProgress')
+                    .onSnapshot(snap => {
+                        const map = {};
+                        snap.forEach(doc => map[doc.id] = doc.data());
+                        setAllWeeksData(map);
+                    });
+            }, [user]);
+
+            const currentData = allWeeksData[activeWeek] || { progress: {}, structure: DEFAULT_STRUCTURE, rewards: ["치킨", "게임 1시간", "책 선물"] };
+            const activeStructure = currentData.structure || DEFAULT_STRUCTURE;
+            const currentRewards = (currentData.rewards || ["보상 1", "보상 2", "보상 3"]).slice(0, 3);
+
+            const stats = useMemo(() => {
+                let filled = 0, total = 0;
+                const catData = activeStructure.map(cat => {
+                    let cf = 0, ct = 0;
+                    cat.items.forEach(i => {
+                        const val = currentData.progress?.[i.id] || 0;
+                        cf += val; ct += i.total;
+                    });
+                    filled += cf; total += ct;
+                    return { ...cat, percent: ct > 0 ? Math.round((cf/ct)*100) : 0, mins: cf*10 };
+                });
+                return { totalPercent: total > 0 ? Math.round((filled/total)*100) : 0, totalMins: filled*10, catData };
+            }, [activeWeek, allWeeksData, activeStructure, currentData.progress]);
+
+            // 차트 업데이트 로직
+            useEffect(() => {
+                if (isPrintMode) return;
+                const radarCtx = document.getElementById('radarChart')?.getContext('2d');
+                const doughnutCtx = document.getElementById('doughnutChart')?.getContext('2d');
+
+                if (radarCtx) {
+                    if (radarRef.current) radarRef.current.destroy();
+                    radarRef.current = new Chart(radarCtx, {
+                        type: 'radar',
+                        data: {
+                            labels: stats.catData.map(c => c.label),
+                            datasets: [{
+                                data: stats.catData.map(c => c.percent),
+                                backgroundColor: 'rgba(59, 130, 246, 0.2)', borderColor: '#3b82f6', pointBackgroundColor: '#3b82f6'
+                            }]
+                        },
+                        options: { scales: { r: { min: 0, max: 100, ticks: { display: false }, pointLabels: { font: { size: 16, weight: 'bold' } } } }, plugins: { legend: { display: false } } }
+                    });
+                }
+
+                if (doughnutCtx) {
+                    if (doughnutRef.current) doughnutRef.current.destroy();
+                    doughnutRef.current = new Chart(doughnutCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: stats.catData.map(c => c.label),
+                            datasets: [{ data: stats.catData.map(c => c.mins), backgroundColor: stats.catData.map(c => c.color), borderWidth: 0 }]
+                        },
+                        options: { plugins: { legend: { position: 'bottom', labels: { font: { size: 14, weight: 'bold' } } } }, cutout: '60%' }
+                    });
+                }
+            }, [stats, isPrintMode]);
+
+            const handleToggle = async (itemId, idx) => {
+                const prog = { ...(currentData.progress || {}) };
+                const cur = prog[itemId] || 0;
+                prog[itemId] = (idx + 1 === cur) ? idx : idx + 1;
+                await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('weeklyProgress').doc(activeWeek).set({ ...currentData, progress: prog }, { merge: true });
+            };
+
+            const spin = () => {
+                setIsSpinning(true); setWinningReward(null);
+                setTimeout(() => {
+                    setWinningReward(currentRewards[Math.floor(Math.random()*3)]);
+                    setIsSpinning(false);
+                }, 2000);
+            };
+
+            useEffect(() => { if(window.lucide) lucide.createIcons(); }, [activeWeek, allWeeksData, isAllCompleted]);
+
+            const isAllCompleted = stats.catData.every(c => c.percent === 100);
+
+            return (
+                <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-8">
+                    <header className={`bg-white rounded-[3rem] p-8 shadow-sm border border-slate-100 flex flex-col items-center gap-6 ${isPrintMode ? 'border-b-4 border-black mb-8' : ''}`}>
+                        <div className="flex justify-between w-full items-center">
+                            <h1 className="text-2xl md:text-3xl font-black text-slate-800 flex items-center gap-3">
+                                <i data-lucide="star" className="text-yellow-400 fill-yellow-400"></i> 규림이의 성장 게이지
+                            </h1>
+                            <div className="flex gap-2 no-print">
+                                <button onClick={() => { setEditStructure(JSON.parse(JSON.stringify(activeStructure))); setShowSettings(true); }} className="p-3 bg-slate-50 rounded-2xl text-slate-400"><i data-lucide="settings"></i></button>
+                                <button onClick={() => { setIsPrintMode(true); setTimeout(() => { window.print(); setIsPrintMode(false); }, 500); }} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold">A4 출력</button>
+                            </div>
+                        </div>
+                        <div className="w-full bg-slate-50 rounded-[2.5rem] p-6 flex flex-col md:flex-row justify-between items-center gap-6 shadow-inner">
+                            <div className="flex flex-col gap-2 flex-1">
+                                <span className="text-[10px] font-black text-slate-400 uppercase">주차 선택</span>
+                                <select value={activeWeek} onChange={e => setActiveWeek(e.target.value)} className="bg-white border-2 border-slate-200 rounded-xl px-4 py-3 font-black text-blue-600 text-xl w-full">
+                                    {weeksList.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
+                                </select>
+                            </div>
+                            <div className="flex gap-12 text-center">
+                                <div><p className="text-[10px] font-black text-slate-400">주간 성취도</p><p className="text-5xl font-black">{stats.totalPercent}%</p></div>
+                                <div><p className="text-[10px] font-black text-slate-400">총 학습 시간</p><p className="text-5xl font-black">{Math.floor(stats.totalMins/60)}h {stats.totalMins%60}m</p></div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {stats.catData.map(cat => (
+                            <section key={cat.id} className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100 flex flex-col card">
+                                <div className="flex justify-between items-center mb-8 border-b-2 pb-6">
+                                    <h2 className="text-3xl font-black text-slate-800 flex items-center gap-4">
+                                        <div className="p-3 rounded-2xl text-white shadow-lg" style={{backgroundColor: cat.color}}><i data-lucide={cat.icon}></i></div>
+                                        {cat.label}
+                                    </h2>
+                                    <span className="text-lg font-black" style={{color: cat.color}}>{cat.percent}% 완료</span>
+                                </div>
+                                <div className="space-y-8 flex-1">
+                                    {cat.items.map(item => {
+                                        const cur = currentData.progress?.[item.id] || 0;
+                                        const done = cur >= item.total;
+                                        return (
+                                            <div key={item.id}>
+                                                <div className="flex justify-between items-center mb-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`text-xl font-black ${done ? 'text-blue-600' : 'text-slate-700'}`}>{item.name}</span>
+                                                        {done && <div className="stamp-animation bg-blue-100 text-blue-600 px-2 py-0.5 rounded-lg text-[10px] font-black border border-blue-200">DONE</div>}
+                                                    </div>
+                                                    <span className="text-xs font-black text-slate-300">{cur*10}/{item.total*10}m</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {Array.from({length: item.total}).map((_, i) => (
+                                                        <button key={i} onClick={() => handleToggle(item.id, i)} 
+                                                            className={`w-8 h-10 rounded-lg flex items-center justify-center border-2 text-[11px] font-black transition-all ${i < cur ? 'border-transparent text-white shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-500'}`}
+                                                            style={{backgroundColor: i < cur ? cat.color : ''}}>
+                                                            {i+1}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </section>
+                        ))}
+                    </main>
+
+                    {!isPrintMode && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-8 no-print">
+                            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+                                <h3 className="text-xs font-black text-slate-400 uppercase mb-8">영역별 성취 게이지</h3>
+                                <div className="space-y-6">
+                                    {stats.catData.map(c => (
+                                        <div key={c.id} className="space-y-2">
+                                            <div className="flex justify-between text-sm font-black"><span>{c.label}</span><span>{c.percent}%</span></div>
+                                            <div className="w-full h-4 bg-slate-50 rounded-full overflow-hidden border"><div className="h-full transition-all duration-1000" style={{width: `${c.percent}%`, backgroundColor: c.color}}></div></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100 flex flex-col items-center">
+                                <h3 className="text-xs font-black text-slate-400 uppercase mb-4 w-full">학습 밸런스</h3>
+                                <canvas id="radarChart"></canvas>
+                            </div>
+                            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100 flex flex-col items-center">
+                                <h3 className="text-xs font-black text-slate-400 uppercase mb-4 w-full">공부 시간 비중</h3>
+                                <canvas id="doughnutChart"></canvas>
+                            </div>
+                        </div>
+                    )}
+
+                    {!isPrintMode && (
+                        <div className="pt-8 no-print">
+                            {isAllCompleted ? (
+                                <section className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-[3rem] p-10 text-white shadow-2xl border-4 border-white/20">
+                                    <div className="text-center mb-8">
+                                        <h2 className="text-5xl font-black mb-2 italic">ULTIMATE REWARD!</h2>
+                                        <p className="text-blue-100 text-xl font-bold">규림아, 완벽한 한 주였어! 이제 보상을 뽑아봐! 🎰</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+                                        <div className="space-y-4">
+                                            {currentRewards.map((r, i) => (
+                                                <input key={i} value={r} onChange={e => {
+                                                    const nr = [...currentRewards]; nr[i] = e.target.value;
+                                                    db.collection('artifacts').doc(appId).collection('public').doc('data').collection('weeklyProgress').doc(activeWeek).set({ rewards: nr }, { merge: true });
+                                                }} className="w-full bg-white/10 rounded-xl px-4 py-3 text-sm font-bold outline-none border-none focus:ring-2 focus:ring-yellow-400" />
+                                            ))}
+                                        </div>
+                                        <div className="flex flex-col items-center bg-white/5 rounded-[3rem] p-10 border border-white/10">
+                                            <div className={`text-7xl mb-8 ${isSpinning ? 'spin-anim' : ''}`}>🎁</div>
+                                            <button onClick={spin} disabled={isSpinning} className="bg-yellow-400 text-slate-900 px-12 py-5 rounded-3xl font-black text-2xl shadow-xl hover:bg-white active:scale-95 disabled:opacity-50">
+                                                {isSpinning ? "추첨 중..." : "보상 룰렛 돌리기!"}
+                                            </button>
+                                            {winningReward && !isSpinning && <div className="mt-8 bg-white text-slate-900 px-10 py-5 rounded-2xl shadow-2xl text-3xl font-black animate-bounce">"{winningReward}"</div>}
+                                        </div>
+                                    </div>
+                                </section>
+                            ) : (
+                                <div className="bg-slate-100 rounded-[3rem] p-12 border-2 border-dashed border-slate-200 text-center">
+                                    <p className="text-slate-400 font-bold text-lg">모든 영역을 100% 달성하면 <span className="text-indigo-500 text-2xl font-black">🎁 시크릿 보상 룰렛</span>이 열립니다!</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {showSettings && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-[4rem] w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+                                <div className="p-10 border-b flex justify-between items-center bg-slate-50">
+                                    <h2 className="text-2xl font-black">학습 목표 편집</h2>
+                                    <button onClick={() => setShowSettings(false)} className="text-3xl">×</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-10 space-y-8">
+                                    {editStructure.map((cat, ci) => (
+                                        <div key={ci} className="p-8 border-2 rounded-[2.5rem] space-y-4">
+                                            <input value={cat.label} onChange={e => { const ns = [...editStructure]; ns[ci].label = e.target.value; setEditStructure(ns); }} className="w-full font-black text-xl outline-none" />
+                                            {cat.items.map((it, ii) => (
+                                                <div key={ii} className="flex gap-4 items-center">
+                                                    <input value={it.name} onChange={e => { const ns = [...editStructure]; ns[ci].items[ii].name = e.target.value; setEditStructure(ns); }} className="flex-1 bg-slate-50 rounded-xl px-4 py-2 text-sm font-bold" />
+                                                    <input type="number" value={it.total} onChange={e => { const ns = [...editStructure]; ns[ci].items[ii].total = parseInt(e.target.value)||0; setEditStructure(ns); }} className="w-20 bg-slate-50 rounded-xl px-4 py-2 text-sm font-black text-center" />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="p-10 border-t bg-slate-50">
+                                    <button onClick={async () => {
+                                        await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('weeklyProgress').doc(activeWeek).set({ structure: editStructure }, { merge: true });
+                                        setShowSettings(false);
+                                    }} className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black text-xl">목표 저장하기</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
