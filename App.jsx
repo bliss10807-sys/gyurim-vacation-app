@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection } from 'firebase/firestore';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, RadialLinearScale, PointElement, LineElement, Filler } from 'chart.js';
 import { Radar, Doughnut } from 'react-chartjs-2';
@@ -11,6 +11,24 @@ import {
 } from 'lucide-react';
 
 ChartJS.register(ArcElement, Tooltip, Legend, RadialLinearScale, PointElement, LineElement, Filler);
+
+// ==========================================
+// 🔐 규림이의 실제 Firebase 설정 (반영 완료)
+// ==========================================
+const firebaseConfig = {
+  apiKey: "AIzaSyA753QJ2v7uadcYSDEanE11T2kw_1h6fIo",
+  authDomain: "gyurim-growth-2026.firebaseapp.com",
+  projectId: "gyurim-growth-2026",
+  storageBucket: "gyurim-growth-2026.firebasestorage.app",
+  messagingSenderId: "700321267952",
+  appId: "1:700321267952:web:dede538a9bd98141cf8235",
+  measurementId: "G-GVYHQLBFLS"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = "gyurim-vacation-master-v1"; // 앱 고유 ID
 
 // 아이콘 매핑 도우미
 const IconRenderer = ({ iconName, className, size }) => {
@@ -23,9 +41,7 @@ const IconRenderer = ({ iconName, className, size }) => {
   return icons[iconName] || <BookOpen className={className} size={size} />;
 };
 
-// ==========================================
-// ⚙️ 규림이의 기본 학습 템플릿 (수학, 영어 우선 배치)
-// ==========================================
+// 규림이의 기본 학습 템플릿
 const DEFAULT_STRUCTURE = [
   {
     id: "cat_math",
@@ -99,13 +115,6 @@ const generateWeeks = () => {
   return weeks;
 };
 
-// Firebase 초기화
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'gyurim-growth-weekly-v9';
-
 export default function App() {
   const [user, setUser] = useState(null);
   const [allWeeksData, setAllWeeksData] = useState({});
@@ -120,13 +129,7 @@ export default function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) { console.error("Auth Error:", err); }
+      try { await signInAnonymously(auth); } catch (err) { console.error("Auth Error:", err); }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, setUser);
@@ -254,6 +257,8 @@ export default function App() {
           body { background: white !important; }
           .block-container { gap: 4px !important; }
           .block-item { width: 32px !important; height: 40px !important; border: 1.5px solid #eee !important; font-size: 11px !important; }
+          .subject-title { font-size: 24px !important; }
+          .item-title { font-size: 16px !important; }
           .quad-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 15px !important; }
         }
         @keyframes stamp-bounce {
@@ -401,7 +406,7 @@ export default function App() {
                     <div className="space-y-4 text-left">
                       <h3 className="text-sm font-black uppercase tracking-widest text-blue-200 mb-4 flex items-center gap-2"><Edit3 size={16} /> 보상 후보 3가지 적기</h3>
                       {currentRewards.map((reward, idx) => (
-                        <div key={idx} className="flex items-center gap-3"><span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-xs font-black">{idx + 1}</span><input type="text" value={reward} onChange={(e) => handleRewardChange(idx, e.target.value)} placeholder={`보상 ${idx + 1}`} className="flex-1 bg-white/10 border-none rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-yellow-400 outline-none placeholder:text-white/30" /></div>
+                        <div key={idx} className="flex items-center gap-3"><span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-xs font-black">{idx + 1}</span><input type="text" value={reward} onChange={(e) => handleRewardChange(idx, e.target.value)} placeholder={`보상 ${idx + 1}`} className="flex-1 bg-white/10 border-none rounded-xl px-4 py-2.5 text-sm font-bold focus:ring-2 focus:ring-yellow-400 outline-none placeholder:text-white/30" /></div>
                       ))}
                     </div>
                     <div className="flex flex-col items-center justify-center p-10 bg-white/5 rounded-[3rem] border border-white/10 relative">
@@ -433,7 +438,7 @@ export default function App() {
                     <div className="flex items-center gap-5"><div className="w-14 h-14 rounded-2xl shadow-inner" style={{ backgroundColor: cat.color }} /><input className="flex-1 bg-white border-none rounded-2xl px-6 py-4 font-black text-slate-800 text-xl shadow-sm focus:ring-2 focus:ring-blue-500 outline-none" value={cat.label} onChange={(e) => { const newStruct = [...editStructure]; newStruct[catIdx].label = e.target.value; setEditStructure(newStruct); }} /></div>
                     <div className="space-y-4">
                       {cat.items.map((item, itemIdx) => (
-                        <div key={item.id} className="flex gap-4 items-center"><input className="flex-1 bg-white border-none rounded-xl px-5 py-3.5 text-base font-bold shadow-sm focus:ring-1 focus:ring-blue-500 outline-none" value={item.name} onChange={(e) => { const newStruct = [...editStructure]; newStruct[catIdx].items[itemIdx].name = e.target.value; setEditStructure(newStruct); }} /><div className="flex items-center gap-2"><input type="number" className="w-24 bg-white border-none rounded-xl px-4 py-3 text-base font-black text-center shadow-sm" value={item.total} onChange={(e) => { const newStruct = [...editStructure]; newStruct[catIdx].items[itemIdx].total = parseInt(e.target.value) || 0; setEditStructure(newStruct); }} /><span className="text-sm font-black text-slate-400">칸</span></div></div>
+                        <div key={item.id} className="flex gap-4 items-center"><input className="flex-1 bg-white border-none rounded-xl px-5 py-3 text-sm font-bold shadow-sm focus:ring-1 focus:ring-blue-500 outline-none" value={item.name} onChange={(e) => { const newStruct = [...editStructure]; newStruct[catIdx].items[itemIdx].name = e.target.value; setEditStructure(newStruct); }} /><div className="flex items-center gap-2"><input type="number" className="w-24 bg-white border-none rounded-xl px-4 py-3 text-base font-black text-center shadow-sm" value={item.total} onChange={(e) => { const newStruct = [...editStructure]; newStruct[catIdx].items[itemIdx].total = parseInt(e.target.value) || 0; setEditStructure(newStruct); }} /><span className="text-sm font-black text-slate-400">칸</span></div></div>
                       ))}
                     </div>
                   </div>
